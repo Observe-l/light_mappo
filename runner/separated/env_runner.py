@@ -127,6 +127,9 @@ class EnvRunner(Runner):
         rnn_states_critic = []
 
         for agent_id in range(self.num_agents):
+            # Make it async, only compute the actions for those avaiable agent
+            if self.buffer[agent_id].obs[step] is None:
+                continue
             self.trainer[agent_id].prep_rollout()
             value, action, action_log_prob, rnn_state, rnn_state_critic = self.trainer[
                 agent_id

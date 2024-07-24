@@ -21,7 +21,7 @@ parent_dir = os.path.abspath(os.path.join(os.getcwd(), "."))
 sys.path.append(parent_dir)
 
 from config import get_config
-from envs.env_wrappers import DummyVecEnv
+from envs.env_wrappers import DummyVecEnv, SubprocVecEnv
 
 """Train script for MPEs."""
 
@@ -32,20 +32,20 @@ def make_train_env(all_args):
             # TODO 注意注意，这里选择连续还是离散可以选择注释上面两行，或者下面两行。
             # TODO Important, here you can choose continuous or discrete action space by uncommenting the above two lines or the below two lines.
 
-            from envs.env_continuous import ContinuousActionEnv
+            # from envs.env_continuous import ContinuousActionEnv
 
-            env = ContinuousActionEnv()
+            # env = ContinuousActionEnv()
 
-            # from envs.env_discrete import DiscreteActionEnv
+            from envs.env_discrete import DiscreteActionEnv
 
-            # env = DiscreteActionEnv()
+            env = DiscreteActionEnv()
 
             env.seed(all_args.seed + rank * 1000)
             return env
 
         return init_env
 
-    return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+    return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
 def make_eval_env(all_args):
@@ -53,23 +53,23 @@ def make_eval_env(all_args):
         def init_env():
             # TODO 注意注意，这里选择连续还是离散可以选择注释上面两行，或者下面两行。
             # TODO Important, here you can choose continuous or discrete action space by uncommenting the above two lines or the below two lines.
-            from envs.env_continuous import ContinuousActionEnv
+            # from envs.env_continuous import ContinuousActionEnv
 
-            env = ContinuousActionEnv()
-            # from envs.env_discrete import DiscreteActionEnv
-            # env = DiscreteActionEnv()
+            # env = ContinuousActionEnv()
+            from envs.env_discrete import DiscreteActionEnv
+            env = DiscreteActionEnv()
             env.seed(all_args.seed + rank * 1000)
             return env
 
         return init_env
 
-    return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+    return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
 def parse_args(args, parser):
     parser.add_argument("--scenario_name", type=str, default="MyEnv", help="Which scenario to run on")
     parser.add_argument("--num_landmarks", type=int, default=3)
-    parser.add_argument("--num_agents", type=int, default=2, help="number of players")
+    parser.add_argument("--num_agents", type=int, default=12, help="number of players")
 
     all_args = parser.parse_known_args(args)[0]
 

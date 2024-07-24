@@ -123,6 +123,11 @@ class Runner(object):
     @torch.no_grad()
     def compute(self):
         for agent_id in range(self.num_agents):
+            '''
+            Update network seperately
+            '''
+            if self.buffer[agent_id].obs[self.step] is None:
+                continue
             self.trainer[agent_id].prep_rollout()
             next_value = self.trainer[agent_id].policy.get_values(
                 self.buffer[agent_id].share_obs[-1],
@@ -135,6 +140,9 @@ class Runner(object):
     def train(self):
         train_infos = []
         for agent_id in range(self.num_agents):
+            '''
+            Train network seperately
+            '''
             self.trainer[agent_id].prep_training()
             train_info = self.trainer[agent_id].train(self.buffer[agent_id])
             train_infos.append(train_info)

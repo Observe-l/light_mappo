@@ -170,7 +170,7 @@ def get_config():
     parser.add_argument(
         "--cuda",
         action="store_false",
-        default=True,
+        default=False,
         help="by default True, will use GPU to train; or else will use CPU;",
     )
     parser.add_argument(
@@ -182,19 +182,19 @@ def get_config():
     parser.add_argument(
         "--n_training_threads",
         type=int,
-        default=2,
+        default=32,
         help="Number of torch threads for training",
     )
     parser.add_argument(
         "--n_rollout_threads",
         type=int,
-        default=5,
+        default=32,
         help="Number of parallel envs for training rollouts",
     )
     parser.add_argument(
         "--n_eval_rollout_threads",
         type=int,
-        default=2,
+        default=32,
         help="Number of parallel envs for evaluating rollouts",
     )
     parser.add_argument(

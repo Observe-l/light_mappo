@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<additional>
+    <parkingArea id="Factory0" lane="Factory0_0" startPos="0" endPos="40" roadsideCapacity="12" angle="-90" length="13"/>
+    <parkingArea id="Factory1" lane="Factory1_0" startPos="40" endPos="80" roadsideCapacity="12" angle="-90" length="13"/>
+    <parkingArea id="Factory2" lane="Factory2_0" startPos="0" endPos="40" roadsideCapacity="12" angle="-90" length="13"/>
+    <parkingArea id="Factory3" lane="Factory3_0" startPos="0" endPos="40" roadsideCapacity="12" angle="-90" length="13"/>
+
+</additional>

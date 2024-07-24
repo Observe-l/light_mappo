@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes>
+    <vType id="lorry" vClass="truck" color='0,255,0,255'/>
+    <route id="Factory0_to_Factory0" edges="Factory0 Factory0"/>
+    <route id="Factory1_to_Factory1" edges="Factory1 Factory1"/>
+    <route id="Factory2_to_Factory2" edges="Factory2 Factory2"/>
+    <route id="Factory3_to_Factory3" edges="Factory3 Factory3"/>
+</routes>
