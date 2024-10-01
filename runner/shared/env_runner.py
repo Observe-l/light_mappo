@@ -50,6 +50,8 @@ class EnvRunner(Runner):
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
                 # Update activate agent
+                if step == self.episode_length - 1:
+                    self.asynch_control.reset()
                 self.asynch_control.step(obs, actions_env)
 
                 data = (
@@ -69,6 +71,7 @@ class EnvRunner(Runner):
                 self.async_insert(data, active_agents=self.asynch_control.active_agents(), p_agents=self.asynch_control.previous_agents())
 
             # compute return and update network
+            self.buffer.update_mask(self.asynch_control.cnt)
             self.compute()
             train_infos = self.train()
 
