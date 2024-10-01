@@ -8,7 +8,9 @@
 import time
 import numpy as np
 import torch
+from copy import deepcopy
 from runner.shared.base_runner import Runner
+from algorithms.utils.util import AsynchControl
 
 # import imageio
 
@@ -22,6 +24,7 @@ class EnvRunner(Runner):
 
     def __init__(self, config):
         super(EnvRunner, self).__init__(config)
+        self.asynch_control = AsynchControl(num_envs=self.n_eval_rollout_threads, num_agents=self.num_agents)
 
     def run(self):
         self.warmup()
@@ -42,10 +45,12 @@ class EnvRunner(Runner):
                     rnn_states,
                     rnn_states_critic,
                     actions_env,
-                ) = self.collect(step)
+                ) = self.async_collect(active_agents=self.asynch_control.active_agents())
 
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
+                # Update activate agent
+                self.asynch_control.step(obs, actions_env)
 
                 data = (
                     obs,
@@ -53,14 +58,15 @@ class EnvRunner(Runner):
                     dones,
                     infos,
                     values,
-                    actions,
+                    actions_env,
                     action_log_probs,
                     rnn_states,
                     rnn_states_critic,
                 )
 
                 # insert data into buffer
-                self.insert(data)
+                # self.insert(data)
+                self.async_insert(data, active_agents=self.asynch_control.active_agents(), p_agents=self.asynch_control.previous_agents())
 
             # compute return and update network
             self.compute()
@@ -89,16 +95,6 @@ class EnvRunner(Runner):
                     )
                 )
 
-                # if self.env_name == "MPE":
-                #     env_infos = {}
-                #     for agent_id in range(self.num_agents):
-                #         idv_rews = []
-                #         for info in infos:
-                #             if 'individual_reward' in info[agent_id].keys():
-                #                 idv_rews.append(info[agent_id]['individual_reward'])
-                #         agent_k = 'agent%i/individual_rewards' % agent_id
-                #         env_infos[agent_k] = idv_rews
-
                 train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
                 print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
                 self.log_train(train_infos, total_num_steps)
@@ -108,21 +104,32 @@ class EnvRunner(Runner):
             if episode % self.eval_interval == 0 and self.use_eval:
                 self.eval(total_num_steps)
 
+    # def warmup(self):
+    #     # reset env
+    #     obs = self.envs.reset()  # shape = [env_num, agent_num, obs_dim]
+
+    #     # replay buffer
+    #     if self.use_centralized_V:
+    #         share_obs = obs.reshape(self.n_rollout_threads, -1)  # shape = [env_num, agent_num * obs_dim]
+    #         share_obs = np.expand_dims(share_obs, 1).repeat(
+    #             self.num_agents, axis=1
+    #         )  # shape = shape = [env_num, agent_num， agent_num * obs_dim]
+    #     else:
+    #         share_obs = obs
+
+    #     self.buffer.share_obs[0] = share_obs.copy()
+    #     self.buffer.obs[0] = obs.copy()
+    
+
     def warmup(self):
         # reset env
-        obs = self.envs.reset()  # shape = [env_num, agent_num, obs_dim]
-
+        obs = self.envs.reset()
+        self.obs = obs
         # replay buffer
-        if self.use_centralized_V:
-            share_obs = obs.reshape(self.n_rollout_threads, -1)  # shape = [env_num, agent_num * obs_dim]
-            share_obs = np.expand_dims(share_obs, 1).repeat(
-                self.num_agents, axis=1
-            )  # shape = shape = [env_num, agent_num， agent_num * obs_dim]
-        else:
-            share_obs = obs
-
-        self.buffer.share_obs[0] = share_obs.copy()
-        self.buffer.obs[0] = obs.copy()
+        for e, a, step in self.asynch_control.active_agents():
+            share_obs = np.concatenate(list(obs[e].values()))
+            self.buffer.obs[step, e, a] = obs[e][a].copy()
+            self.buffer.share_obs[step, e, a] = share_obs.copy()
 
     @torch.no_grad()
     def collect(self, step):
@@ -178,6 +185,51 @@ class EnvRunner(Runner):
             actions_env,
         )
 
+    def async_collect(self, active_agents):
+        self.trainer.prep_rollout()
+
+        concat_share_obs = np.stack([self.buffer.share_obs[step, e, a] for e, a, step in active_agents],  axis=0)
+        concat_obs = np.stack([self.buffer.obs[step, e, a] for e, a, step in active_agents],  axis=0)
+
+        (
+            value,
+            action,
+            action_log_prob,
+            rnn_states,
+            rnn_states_critic,
+        ) = self.trainer.policy.get_actions(
+            concat_share_obs,
+            concat_obs,
+            np.concatenate([self.buffer.rnn_states[step, e, a] for e, a, step in active_agents],  axis=0),
+            np.concatenate([self.buffer.rnn_states_critic[step, e, a] for e, a, step in active_agents],  axis=0),
+            np.concatenate([self.buffer.masks[step, e, a] for e, a, step in active_agents],  axis=0),
+        )
+        # [self.envs, agents, dim]
+        values = np.array(np.split(_t2n(value), self.n_rollout_threads))
+        actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
+        action_log_probs = np.array(np.split(_t2n(action_log_prob), self.n_rollout_threads))
+        rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+        rnn_states_critic = np.array(np.split(_t2n(rnn_states_critic), self.n_rollout_threads))
+
+        if self.envs.action_space[0].__class__.__name__ == "Discrete":
+            # [self.envs{agents_id: action}]
+            actions_env = [{} for _ in range(self.n_rollout_threads)]
+            value_env = deepcopy(actions_env)
+            action_log_probs_env = deepcopy(actions_env)
+            for i, (e, a, step) in enumerate(active_agents):
+                actions_env[e][a] = actions[e,i,:]
+                value_env[e][a] = values[e,i,:]
+                action_log_probs_env[e][a] = action_log_probs[e,i,:]
+
+        return (
+            value_env,
+            actions,
+            action_log_probs_env,
+            rnn_states,
+            rnn_states_critic,
+            actions_env,
+        )
+
     def insert(self, data):
         (
             obs,
@@ -218,6 +270,73 @@ class EnvRunner(Runner):
             values,
             rewards,
             masks,
+        )
+    
+    def async_insert(self, data, active_agents=None, p_agents=None):
+        (
+            obs,
+            rewards,
+            dones,
+            infos,
+            values,
+            actions,
+            action_log_probs,
+            rnn_states,
+            rnn_states_critic,
+        ) = data
+        tmp_done = np.array([all(done_dict.values()) for done_dict in dones])
+        # dones_env = np.array(
+        #     [[True for _ in range(rnn_states.shape[1])] if tmp_done[e] else [False for _ in range(rnn_states.shape[1])]
+        #      for e in range(len(tmp_done))]
+        #     )
+        mask_done = np.array(
+            [[True for _ in range(self.num_agents)] if tmp_done[e] else [False for _ in range(self.num_agents)]
+             for e in range(len(tmp_done))]
+            )
+        tmp_rnn_states = np.zeros([self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size])
+        tmp_rnn_states_critic = np.zeros([self.n_rollout_threads, self.num_agents, *self.buffer.rnn_states_critic.shape[3:]])
+        # for e, a, step in active_agents:
+        #     if not tmp_done[e]:
+        #         tmp_rnn_states[e, a] = rnn_states[e, a].copy()
+        #         tmp_rnn_states_critic[e, a] = rnn_states_critic[e, a].copy()
+
+        # rnn_states[dones_env == True] = np.zeros(
+        #     ((dones_env == True).sum(), self.hidden_size),
+        #     dtype=np.float32,
+        # )
+        # rnn_states_critic[dones_env == True] = np.zeros(
+        #     ((dones_env == True).sum(), *self.buffer.rnn_states_critic.shape[4:]),
+        #     dtype=np.float32,
+        # )
+        masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        masks[mask_done == True] = np.zeros(((mask_done == True).sum(), 1), dtype=np.float32)
+        share_obs = deepcopy(obs)
+        concat_share_obs = deepcopy(obs)
+        for e in range(self.n_rollout_threads):
+            for a in range(self.num_agents):
+                if a not in share_obs[e].keys():
+                    step = self.asynch_control.cnt[e,a]
+                    share_obs[e][a] = self.buffer.obs[step, e, a].copy()
+
+        for i, (e, a, step) in enumerate(active_agents):
+            concat_share_obs[e][a] = np.concatenate([share_obs[e][key] for key in range(self.num_agents)])
+        for i, (e, a, step) in enumerate(p_agents):
+            if not tmp_done[e]:
+                tmp_rnn_states[e, a] = rnn_states[e, i].copy()
+                tmp_rnn_states_critic[e, a] = rnn_states_critic[e, i].copy()
+        
+        self.buffer.async_insert(
+            concat_share_obs,
+            obs,
+            tmp_rnn_states,
+            tmp_rnn_states_critic,
+            actions,
+            action_log_probs,
+            values,
+            rewards,
+            masks,
+            active_agents= active_agents,
+            p_agents=p_agents,
         )
 
     @torch.no_grad()

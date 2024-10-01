@@ -6,6 +6,7 @@ import torch
 
 from utils.util import update_linear_schedule
 from runner.separated.base_runner import Runner
+from algorithms.utils.util import AsynchControl
 
 
 def _t2n(x):
@@ -15,6 +16,7 @@ def _t2n(x):
 class EnvRunner(Runner):
     def __init__(self, config):
         super(EnvRunner, self).__init__(config)
+        self.asynch_control = AsynchControl(num_envs=self.n_eval_rollout_threads, num_agents=self.num_agents)
 
     def run(self):
         self.warmup()

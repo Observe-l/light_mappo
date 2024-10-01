@@ -170,7 +170,7 @@ def get_config():
     parser.add_argument(
         "--cuda",
         action="store_false",
-        default=False,
+        default=True,
         help="by default True, will use GPU to train; or else will use CPU;",
     )
     parser.add_argument(
@@ -182,19 +182,19 @@ def get_config():
     parser.add_argument(
         "--n_training_threads",
         type=int,
-        default=32,
+        default=1,
         help="Number of torch threads for training",
     )
     parser.add_argument(
         "--n_rollout_threads",
         type=int,
-        default=32,
+        default=1,
         help="Number of parallel envs for training rollouts",
     )
     parser.add_argument(
         "--n_eval_rollout_threads",
         type=int,
-        default=32,
+        default=1,
         help="Number of parallel envs for evaluating rollouts",
     )
     parser.add_argument(
@@ -225,6 +225,14 @@ def get_config():
         help="Whether to use global state or concatenated obs",
     )
 
+    parser.add_argument(
+        "--asynch",
+        action="store_true",
+        default=True,
+        help="Async setting",
+    )
+
+
     # replay buffer parameters
     parser.add_argument("--episode_length", type=int, default=200, help="Max length for any episode")
 
@@ -232,7 +240,7 @@ def get_config():
     parser.add_argument(
         "--share_policy",
         action="store_false",
-        default=False,
+        default=True,
         help="Whether agent share the same policy",
     )
     parser.add_argument(

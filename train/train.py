@@ -45,7 +45,7 @@ def make_train_env(all_args):
 
         return init_env
 
-    return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+    return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
 def make_eval_env(all_args):
@@ -63,13 +63,13 @@ def make_eval_env(all_args):
 
         return init_env
 
-    return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+    return DummyVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 
 def parse_args(args, parser):
     parser.add_argument("--scenario_name", type=str, default="MyEnv", help="Which scenario to run on")
     parser.add_argument("--num_landmarks", type=int, default=3)
-    parser.add_argument("--num_agents", type=int, default=12, help="number of players")
+    parser.add_argument("--num_agents", type=int, default=30, help="number of players")
 
     all_args = parser.parse_known_args(args)[0]
 

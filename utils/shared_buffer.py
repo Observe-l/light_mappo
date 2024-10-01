@@ -23,6 +23,7 @@ class SharedReplayBuffer(object):
 
     def __init__(self, args, num_agents, obs_space, cent_obs_space, act_space):
         self.episode_length = args.episode_length
+        self.num_agents = num_agents
         self.n_rollout_threads = args.n_rollout_threads
         self.hidden_size = args.hidden_size
         self.recurrent_N = args.recurrent_N
@@ -32,6 +33,7 @@ class SharedReplayBuffer(object):
         self._use_popart = args.use_popart
         self._use_valuenorm = args.use_valuenorm
         self._use_proper_time_limits = args.use_proper_time_limits
+        self.asynch = args.asynch
 
         obs_shape = get_shape_from_obs_space(obs_space)
         share_obs_shape = get_shape_from_obs_space(cent_obs_space)
@@ -74,6 +76,8 @@ class SharedReplayBuffer(object):
         self.bad_masks = np.ones_like(self.masks)
         self.active_masks = np.ones_like(self.masks)
 
+        self.update_step = np.zeros((self.n_rollout_threads, num_agents, 1), dtype=np.int32)
+
         self.step = 0
 
     def insert(self, share_obs, obs, rnn_states_actor, rnn_states_critic, actions, action_log_probs,
@@ -110,6 +114,47 @@ class SharedReplayBuffer(object):
             self.available_actions[self.step + 1] = available_actions.copy()
 
         self.step = (self.step + 1) % self.episode_length
+    
+    def async_insert(self, share_obs, obs, rnn_states, rnn_states_critic, actions, action_log_probs,
+               value_preds, rewards, masks, bad_masks=None, active_masks=None, available_actions=None,
+               active_agents=None, p_agents=None):
+        assert active_agents is not None
+        for e, a, step in active_agents:
+            step = int(step -1 )
+            if step == -1:
+                step = self.update_step[e, a]
+            self.share_obs[step+1, e, a] = share_obs[e][a].copy()
+            self.obs[step+1, e, a] = obs[e][a].copy()
+            self.rnn_states[step+1, e, a] = rnn_states[e,a].copy()
+            self.rnn_states_critic[step+1, e, a] = rnn_states_critic[e,a].copy()
+            # self.actions[step, e, a] = actions[e, a].copy()
+            # self.action_log_probs[step, e, a] = action_log_probs[e, a].copy()
+            # self.value_preds[step, e, a] = value_preds[e, a].copy()
+            # self.rewards[step, e, a] = rewards[e][a]
+            self.masks[step+1] = masks[e, a].copy()
+            if bad_masks is not None:
+                self.bad_masks[step + 1] = bad_masks[e, a].copy()
+            if active_masks is not None:
+                self.active_masks[step + 1] = active_masks[e, a].copy()
+            if available_actions is not None:
+                self.available_actions[step + 1] = available_actions[e, a].copy()
+            
+            self.update_step[e, a] = step
+        for e, a, step in p_agents:
+            self.actions[step, e, a] = actions[e][a].copy()
+            self.action_log_probs[step, e, a] = action_log_probs[e][a].copy()
+            self.value_preds[step, e, a] = value_preds[e][a].copy()
+            self.rewards[step, e, a] = rewards[e][a]
+            
+    
+    def update_mask(self, steps):
+        self.active_masks = np.ones_like(self.active_masks)
+        for e in range(self.n_rollout_threads):
+            for a in range(self.num_agents):
+                step = self.update_step[e, a, 0]
+                self.masks[step+1:, e, a] = np.zeros_like(self.masks[step+1:, e, a])
+                self.active_masks[step+1:, e, a] = np.zeros_like(self.active_masks[step+1:, e, a])
+
 
     def chooseinsert(self, share_obs, obs, rnn_states, rnn_states_critic, actions, action_log_probs,
                      value_preds, rewards, masks, bad_masks=None, active_masks=None, available_actions=None):
@@ -148,15 +193,29 @@ class SharedReplayBuffer(object):
 
     def after_update(self):
         """Copy last timestep data to first index. Called after update to model."""
-        self.share_obs[0] = self.share_obs[-1].copy()
-        self.obs[0] = self.obs[-1].copy()
-        self.rnn_states[0] = self.rnn_states[-1].copy()
-        self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
-        self.masks[0] = self.masks[-1].copy()
-        self.bad_masks[0] = self.bad_masks[-1].copy()
-        self.active_masks[0] = self.active_masks[-1].copy()
-        if self.available_actions is not None:
-            self.available_actions[0] = self.available_actions[-1].copy()
+        if self.asynch:
+            for e in range(self.n_rollout_threads):
+                for a in range(self.num_agents):
+                    step = self.update_step[e, a] + 1
+                    self.share_obs[0, e, a] = self.share_obs[step, e, a].copy()
+                    self.obs[0, e, a] = self.obs[step, e, a].copy()
+                    self.rnn_states[0, e, a] = self.rnn_states[step, e, a].copy()
+                    self.rnn_states_critic[0, e, a] = self.rnn_states_critic[step, e, a].copy()
+                    self.masks[0, e, a] = self.masks[step, e, a].copy()
+                    self.bad_masks[0, e, a] = self.bad_masks[step, e, a].copy()
+                    self.active_masks[0, e, a] = self.active_masks[step, e, a].copy()
+                    if self.available_actions is not None:
+                        self.available_actions[0, e, a] = self.available_actions[step, e, a].copy()
+        else:   
+            self.share_obs[0] = self.share_obs[-1].copy()
+            self.obs[0] = self.obs[-1].copy()
+            self.rnn_states[0] = self.rnn_states[-1].copy()
+            self.rnn_states_critic[0] = self.rnn_states_critic[-1].copy()
+            self.masks[0] = self.masks[-1].copy()
+            self.bad_masks[0] = self.bad_masks[-1].copy()
+            self.active_masks[0] = self.active_masks[-1].copy()
+            if self.available_actions is not None:
+                self.available_actions[0] = self.available_actions[-1].copy()
 
     def chooseafter_update(self):
         """Copy last timestep data to first index. This method is used for Hanabi."""

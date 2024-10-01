@@ -21,8 +21,8 @@ class DiscreteActionEnv(object):
         self.env = EnvCore()
         self.num_agent = self.env.agent_num
 
-        self.signal_obs_dim = self.env.obs_dim
-        self.signal_action_dim = self.env.action_dim
+        # self.signal_obs_dim = self.env.obs_dim
+        # self.signal_action_dim = self.env.action_dim
 
         # if true, action is a number 0...N, otherwise action is a one-hot N-dimensional vector
         self.discrete_action_input = False
@@ -30,52 +30,52 @@ class DiscreteActionEnv(object):
         self.movable = True
 
         # configure spaces
-        self.action_space = []
-        self.observation_space = []
-        self.share_observation_space = []
+        self.action_space = self.env.action_space
+        self.observation_space = self.env.observation_space
+        self.share_observation_space = self.env.share_observation_space
 
-        share_obs_dim = 0
-        total_action_space = []
-        for agent_idx in range(self.num_agent):
-            # physical action space
-            u_action_space = spaces.Discrete(self.signal_action_dim)  # 5个离散的动作
+        # share_obs_dim = 0
+        # total_action_space = []
+        # for agent_idx in range(self.num_agent):
+        #     # physical action space
+        #     u_action_space = spaces.Discrete(self.signal_action_dim)  # 5个离散的动作
 
-            # if self.movable:
-            total_action_space.append(u_action_space)
+        #     # if self.movable:
+        #     total_action_space.append(u_action_space)
 
-            # total action space
-            # if len(total_action_space) > 1:
-            #     # all action spaces are discrete, so simplify to MultiDiscrete action space
-            #     if all(
-            #         [
-            #             isinstance(act_space, spaces.Discrete)
-            #             for act_space in total_action_space
-            #         ]
-            #     ):
-            #         act_space = MultiDiscrete(
-            #             [[0, act_space.n - 1] for act_space in total_action_space]
-            #         )
-            #     else:
-            #         act_space = spaces.Tuple(total_action_space)
-            # self.action_space.append(act_space)
-            # else:
-            self.action_space.append(total_action_space[agent_idx])
+        #     # total action space
+        #     # if len(total_action_space) > 1:
+        #     #     # all action spaces are discrete, so simplify to MultiDiscrete action space
+        #     #     if all(
+        #     #         [
+        #     #             isinstance(act_space, spaces.Discrete)
+        #     #             for act_space in total_action_space
+        #     #         ]
+        #     #     ):
+        #     #         act_space = MultiDiscrete(
+        #     #             [[0, act_space.n - 1] for act_space in total_action_space]
+        #     #         )
+        #     #     else:
+        #     #         act_space = spaces.Tuple(total_action_space)
+        #     # self.action_space.append(act_space)
+        #     # else:
+        #     self.action_space.append(total_action_space[agent_idx])
 
-            # observation space
-            share_obs_dim += self.signal_obs_dim
-            self.observation_space.append(
-                spaces.Box(
-                    low=-np.inf,
-                    high=+np.inf,
-                    shape=(self.signal_obs_dim,),
-                    dtype=np.float32,
-                )
-            )  # [-inf,inf]
+        #     # observation space
+        #     share_obs_dim += self.signal_obs_dim
+        #     self.observation_space.append(
+        #         spaces.Box(
+        #             low=-np.inf,
+        #             high=+np.inf,
+        #             shape=(self.signal_obs_dim,),
+        #             dtype=np.float32,
+        #         )
+        #     )  # [-inf,inf]
 
-        self.share_observation_space = [
-            spaces.Box(low=-np.inf, high=+np.inf, shape=(share_obs_dim,), dtype=np.float32)
-            for _ in range(self.num_agent)
-        ]
+        # self.share_observation_space = [
+        #     spaces.Box(low=-np.inf, high=+np.inf, shape=(share_obs_dim,), dtype=np.float32)
+        #     for _ in range(self.num_agent)
+        # ]
 
     def step(self, actions):
         """
@@ -87,13 +87,13 @@ class DiscreteActionEnv(object):
         # 5 threads of the environment, with 2 intelligent agents inside, and each intelligent agent's action is a 5-dimensional one_hot encoding
         """
 
-        results = self.env.step(actions)
-        obs, rews, dones, infos = results
-        return np.stack(obs), np.stack(rews), np.stack(dones), infos
+        # results = self.env.step(actions)
+        # obs, rews, dones, infos = results
+        return self.env.step(actions)
 
     def reset(self):
-        obs = self.env.reset()
-        return np.stack(obs)
+        # obs = self.env.reset()
+        return self.env.reset()
 
     def close(self):
         pass
