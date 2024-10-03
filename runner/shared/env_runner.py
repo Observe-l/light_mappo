@@ -8,6 +8,7 @@
 import time
 import numpy as np
 import torch
+import wandb
 from copy import deepcopy
 from runner.shared.base_runner import Runner
 from algorithms.utils.util import AsynchControl
@@ -27,16 +28,22 @@ class EnvRunner(Runner):
         self.asynch_control = AsynchControl(num_envs=self.n_eval_rollout_threads, num_agents=self.num_agents)
 
     def run(self):
+        wandb.init(project="Async-MAPPO", config={
+            "algorithm":"Async-MAPPO",
+            "environment":"Async-Truck",
+            "num_episodes":1000,
+        })
+
         self.warmup()
 
         start = time.time()
-        episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
+        episodes = int(self.total_episode) // self.n_rollout_threads
 
         for episode in range(episodes):
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)
 
-            for step in range(self.episode_length):
+            for step in range(self.episode_length * self.num_agents):
                 # Sample actions
                 (
                     values,
@@ -50,8 +57,6 @@ class EnvRunner(Runner):
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
                 # Update activate agent
-                if step == self.episode_length - 1:
-                    self.asynch_control.reset()
                 self.asynch_control.step(obs, actions_env)
 
                 data = (
@@ -69,14 +74,25 @@ class EnvRunner(Runner):
                 # insert data into buffer
                 # self.insert(data)
                 self.async_insert(data, active_agents=self.asynch_control.active_agents(), p_agents=self.asynch_control.previous_agents())
+                tmp_done = np.array([all(done_dict.values()) for done_dict in dones])
+                if tmp_done[0]:
+                    break
 
+            self.warmup()
             # compute return and update network
-            self.buffer.update_mask(self.asynch_control.cnt)
+            # self.buffer.update_mask(self.asynch_control.cnt)
             self.compute()
             train_infos = self.train()
 
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+
+            wandb.log({
+                "episode": episode,
+                "episode_reward": np.mean(self.buffer.rewards) * self.episode_length,
+                "episode_length": self.episode_length,
+                "total_timesteps": total_num_steps,
+            })
 
             # save model
             if episode % self.save_interval == 0 or episode == episodes - 1:
@@ -106,6 +122,7 @@ class EnvRunner(Runner):
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
                 self.eval(total_num_steps)
+        wandb.finish()
 
     # def warmup(self):
     #     # reset env
@@ -126,6 +143,7 @@ class EnvRunner(Runner):
 
     def warmup(self):
         # reset env
+        self.asynch_control.reset()
         obs = self.envs.reset()
         self.obs = obs
         # replay buffer

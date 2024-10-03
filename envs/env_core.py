@@ -85,7 +85,7 @@ class EnvCore(object):
         self.flag_reset()
         # Save the results
         self.save_results(self.episode_len, step_lenth, action_dict, rewards)
-        if self.episode_len >= 30 * 24 *3600:
+        if self.episode_len >= 7 * 24 *3600:
             self.done['__all__'] = True
         return obs, rewards, self.done, self.done, {}
     
@@ -130,7 +130,7 @@ class EnvCore(object):
             # The transported product
             product = tmp_truck.get_truck_produce()
             agent_id = int(tmp_truck.id.split('_')[1])
-            observation[agent_id] = np.concatenate([queue_obs]+[distance]+[[position]]+[[weight]]+[[product]])
+            observation[agent_id] = np.concatenate([[position]]+[queue_obs]+[distance]+[[weight]]+[[product]])
         return observation
 
     def _get_reward(self,action_dict:dict):
