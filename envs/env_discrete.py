@@ -5,8 +5,8 @@
 # @File    : env_discrete.py
 """
 
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 from envs.env_core import EnvCore
 

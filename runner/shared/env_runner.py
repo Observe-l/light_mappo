@@ -162,7 +162,8 @@ class EnvRunner(Runner):
                     actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
         elif self.envs.action_space[0].__class__.__name__ == "Discrete":
             # actions  --> actions_env : shape:[10, 1] --> [5, 2, 5]
-            actions_env = np.squeeze(np.eye(self.envs.action_space[0].n)[actions], 2)
+            # actions_env = np.squeeze(np.eye(self.envs.action_space[0].n)[actions], 2)
+            actions_env = actions
         else:
             # TODO 这里改造成自己环境需要的形式即可
             # TODO Here, you can change the shape of actions_env to fit your environment

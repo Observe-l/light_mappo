@@ -32,13 +32,13 @@ def make_train_env(all_args):
             # TODO 注意注意，这里选择连续还是离散可以选择注释上面两行，或者下面两行。
             # TODO Important, here you can choose continuous or discrete action space by uncommenting the above two lines or the below two lines.
 
-            from envs.env_continuous import ContinuousActionEnv
+            # from envs.env_continuous import ContinuousActionEnv
 
-            env = ContinuousActionEnv()
+            # env = ContinuousActionEnv()
 
-            # from envs.env_discrete import DiscreteActionEnv
+            from envs.env_discrete import DiscreteActionEnv
 
-            # env = DiscreteActionEnv()
+            env = DiscreteActionEnv()
 
             env.seed(all_args.seed + rank * 1000)
             return env
@@ -69,7 +69,7 @@ def make_eval_env(all_args):
 def parse_args(args, parser):
     parser.add_argument("--scenario_name", type=str, default="MyEnv", help="Which scenario to run on")
     parser.add_argument("--num_landmarks", type=int, default=3)
-    parser.add_argument("--num_agents", type=int, default=2, help="number of players")
+    parser.add_argument("--num_agents", type=int, default=12, help="number of players")
 
     all_args = parser.parse_known_args(args)[0]
 
